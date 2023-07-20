@@ -20,7 +20,7 @@ class MainWindow():
         self.main.title('Image Stitcher')
         self.main.geometry('1300x700')
         self.main.config(background = "white")
-        self.stitch_mode = 'sift'
+        self.stitch_mode = 'combo'
         ##Menu Bar
         menubar = Menu(main)
         self.main.config(menu=menubar)
@@ -382,7 +382,10 @@ class MainWindow():
         print('transform_added')
         
     def save_transform_list(self):
-        
+        print('Transform df head:')
+        print(self.transform_dataframe.head())
+        print('Transform df last item:')
+        print(self.transform_dataframe.iloc[-1])
         self.transform_dataframe.to_pickle('transform_list')
         print('Transform list saved at:')
         print(os.getcwd())
