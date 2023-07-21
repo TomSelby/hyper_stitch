@@ -11,7 +11,11 @@ import glob
 import pandas as pd
 import cv2
 import sys
-from simpleicp import PointCloud, SimpleICP
+from sklearn.neighbors import NearestNeighbors
+import torch
+import kornia.feature as KF
+from kornia_moons.viz import *
+from kornia_moons.feature import *
         
 class MainWindow():
     def __init__(self,main):
@@ -21,7 +25,8 @@ class MainWindow():
         self.main.geometry('1300x700')
         self.main.config(background = "white")
         self.stitch_mode = 'combo'
-        ##Menu Bar
+
+        ## Menu Bar
         menubar = Menu(main)
         self.main.config(menu=menubar)
         self.file_menu = Menu(menubar)
@@ -32,7 +37,7 @@ class MainWindow():
         self.file_menu.add_command(label = 'Batch drift correct', command = self.batch_drift_correct)
         self.file_menu.add_command(label = 'Alter SIFT and RANSAC params', command = self.sift_ransac_params)
         self.file_menu.add_command(label = 'Change Mode', command = self.change_mode)
-        
+        self.file_menu.add_command(label = 'Change detection mode', command = self.change_detection)
         menubar.add_cascade(label = "File",menu=self.file_menu)
         self.last_filepath = '/'
         self.transform_dataframe = pd.DataFrame(columns = ['file1','file2','TM'])
@@ -119,7 +124,58 @@ class MainWindow():
         self.tm_from_selected_pts.grid(row=3, column=3, sticky = N)
     
 
+    def korina_detection(self):
+        def numpy_to_torch_tensor(npy):
+            npy = npy - np.amin(npy)
+            npy = 255*(npy/np.amax(npy))
+            tensor = np.zeros((1,1,np.shape(npy)[0],np.shape(npy)[1]))
+            tensor[0,0] = npy
+            tensor = torch.FloatTensor(tensor)
+            return tensor
+        def get_matching_keypoints(lafs1, lafs2, idxs):
+            mkpts1 = KF.get_laf_center(lafs1).squeeze()[idxs[:, 0]].detach().cpu().numpy()
+            mkpts2 = KF.get_laf_center(lafs2).squeeze()[idxs[:, 1]].detach().cpu().numpy()
+            return mkpts1, mkpts2
+    
 
+        device = torch.device("cpu")
+        feature = KF.KeyNetAffNetHardNet(5000, True).eval().to(device)
+        img1 = numpy_to_torch_tensor(self.imarray1)
+        img0 = numpy_to_torch_tensor(self.imarray2)
+        input_dict = {"image0":img0,
+                     "image1":img1}
+        feature = KF.KeyNetAffNetHardNet(5000, True).eval().to(device)
+        adalam_config = {"device": device}
+        hw1 = torch.tensor(img1.shape[2:])
+        hw2 = torch.tensor(img1.shape[2:])
+        with torch.inference_mode():
+            lafs1, resps1, descs1 = feature(img0)
+            lafs2, resps2, descs2 = feature(img1)
+            dists, idxs = KF.match_adalam(
+                descs1.squeeze(0),
+                descs2.squeeze(0),
+                lafs1,
+                lafs2,  # Adalam takes into account also geometric information
+                config=adalam_config,
+                hw1=hw1,
+                hw2=hw2,  # Adalam also benefits from knowing image size
+            )
+        print(f"{idxs.shape[0]} tentative matches with AdaLAM")
+        mkpts1, mkpts2 = get_matching_keypoints(lafs1, lafs2, idxs)
+        return mkpts1,mkpts2
+        
+
+    
+    def change_detection(self):
+        modes = np.array(['sift', 'brisk', 'combo','kornia']) # https://kornia-tutorials.readthedocs.io/en/latest/_nbs/image_matching_adalam.html
+        current_mode = np.where(modes == self.stitch_mode)[0][0]
+        
+        if current_mode == 3:
+            current_mode = -1
+        self.stitch_mode = modes[current_mode+1]
+        print(f'Detection mode changed to: {self.stitch_mode}')
+        
+    
     def change_mode(self):
         '''Change between stitching and drift correction mode'''
         if self.mode == 'stitching':
@@ -131,18 +187,10 @@ class MainWindow():
         
         
     def tm_from_selection(self):
-        self.transform,inliners = cv2.estimateAffinePartial2D(np.array(self.subplot1pts),np.array(self.subplot0pts),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
+        self.transform,inliers = cv2.estimateAffinePartial2D(np.array(self.subplot1pts),np.array(self.subplot0pts),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
         
-        # self.transform,inliners = cv2.estimateAffine2D(np.array(self.subplot1pts),np.array(self.subplot0pts),method = 'LMEDS',refineIters=self.ransac_refine_iters)
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        # self.transform,inliers = cv2.estimateAffine2D(np.array(self.subplot1pts),np.array(self.subplot0pts),method = 'LMEDS',refineIters=self.ransac_refine_iters)
+                
         self.affine_label.configure(self.affine_label, text=str(np.around(self.transform)))# Update affine label
 
         self.perform_transform()
@@ -221,12 +269,12 @@ class MainWindow():
             
     def siftestimation(self):
         
-        sift1 = cv2.SIFT_create()
-        sift2 = cv2.SIFT_create()
-        orb1 = cv2.ORB_create()   
-        orb2 = cv2.ORB_create()
-        brisk1 = cv2.BRISK_create()
-        brisk2 = cv2.BRISK_create()
+        sift1 = cv2.SIFT_create(self.numb_SIFT_points)
+        sift2 = cv2.SIFT_create(self.numb_SIFT_points)
+        orb1 = cv2.ORB_create(self.numb_SIFT_points)   
+        orb2 = cv2.ORB_create(self.numb_SIFT_points)
+        brisk1 = cv2.BRISK_create(self.numb_SIFT_points)
+        brisk2 = cv2.BRISK_create(self.numb_SIFT_points)
      
 
         
@@ -243,12 +291,11 @@ class MainWindow():
         matches_b = bf_b.match(self.descriptors2b,self.descriptors1b)
         matches_s = bf_s.match(self.descriptors2s,self.descriptors1s)
        
-        matches_b = sorted(matches_b, key = lambda x:x.distance)[:self.numb_SIFT_points] ## This nuber gives the number of matches to consider
-        matches_s = sorted(matches_s, key = lambda x:x.distance)[:self.numb_SIFT_points] ## This nuber gives the number of matches to consider
+
 
         ## Get the points of xy1 and xy2 for the best 4 points ** NOTE- as images are the same mag but differet dimensions this makes things difficult
-        src_points = []
-        des_points = []
+        self.src_points = []
+        self.des_points = []
         
         
         
@@ -257,16 +304,21 @@ class MainWindow():
                     feature1, feature2 = (self.features2s[match.queryIdx]), (self.features1s[match.trainIdx])
                     src_point  = int(feature1.pt[0]), int(feature1.pt[1])
                     des_point  = int(feature2.pt[0]),int(feature2.pt[1])
-                    src_points.append(src_point)
-                    des_points.append(des_point)
+                    self.src_points.append(src_point)
+                    self.des_points.append(des_point)
         
         elif self.stitch_mode == 'brisk':
             for match in matches_b:
                 feature1, feature2 = (self.features2b[match.queryIdx]), (self.features1b[match.trainIdx])
                 src_point  = int(feature1.pt[0]), int(feature1.pt[1])
                 des_point  = int(feature2.pt[0]),int(feature2.pt[1])
-                src_points.append(src_point)
-                des_points.append(des_point)
+                self.src_points.append(src_point)
+                self.des_points.append(des_point)
+        
+
+        elif self.stitch_mode == 'kornia':
+            self.src_points,self.des_points = self.korina_detection()
+            
         elif self.stitch_mode == 'combo':
             matches_list = [matches_b, matches_s]
             features_lits = [(self.features2b, self.features1b),(self.features2s,self.features1s)]
@@ -277,21 +329,16 @@ class MainWindow():
                     feature1, feature2 = (self.features2[match.queryIdx]), (self.features1[match.trainIdx])
                     src_point  = int(feature1.pt[0]), int(feature1.pt[1])
                     des_point  = int(feature2.pt[0]),int(feature2.pt[1])
-                    src_points.append(src_point)
-                    des_points.append(des_point)
-            
-            
-        # img3 = cv2.drawMatches(self.imarray2,self.features2,self.imarray1,self.features1,matches,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-        # if self.mode == 'stitching':
-        #     fig,ax =plt.subplots()
-        #     ax.imshow(img3)
-        #     ax.set_xticks([])
-        #     ax.set_yticks([])
-        #     plt.show()
-        
+                    self.src_points.append(src_point)
+                    self.des_points.append(des_point)
+                
+            src_points,des_points = self.korina_detection()
+            self.src_points.append(src_point)
+            self.des_points.append(des_point)       
         
         try:
-            self.transform,inliners = cv2.estimateAffinePartial2D(np.array(src_points), np.array(des_points),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
+            self.transform,inliers = cv2.estimateAffinePartial2D(np.array(self.src_points), np.array(self.des_points),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
+            print(f"{inliers.sum()} inliers")
             self.affine_label.configure(self.affine_label, text=str(np.around(self.transform)))# Update affine label
             print(self.transform)
             
@@ -302,9 +349,7 @@ class MainWindow():
                     print(self.transform, self.transform[0][0])
                     return
                 self.perform_transform() #Call the transform function
-                
-                    
-
+       
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             print(e)
@@ -328,37 +373,34 @@ class MainWindow():
         print(f'RANSAC Recip Threshold: {self.ransac_recip_thresh}\nRANSAC Confidence: {self.ransac_confidence}\nRANSAC Iterations: {self.ransac_refine_iters}\nNumber of SIFT keypoints: {self.numb_SIFT_points}')
 
     
-    
-
-
-    
-    
+      
     def icp_refine(self):
-        def array_to_xyz(im1):
-            xyz = []
-            im1_shape = np.shape(im1)
-            for i in range(im1_shape[0]):
-                for j in range(im1_shape[1]):
-                    xyz.append([i,j,im1[i,j]])
+        def icp(src,dest, Tr, no_iterations = 13):    
 
-            return np.array(xyz)
+            #Initialise with the initial pose estimation
+            src = cv2.transform(src, Tr[0:2])
         
-        print('icp_refine')
-        overlap_index = np.where((self.t_canvas1>0) & (self.t_canvas2>0)) 
-        canvas = self.t_canvas1[min(overlap_index[0]):max(overlap_index[0]),min(overlap_index[1]):max(overlap_index[1])]
-        t_canvas = self.t_canvas2[min(overlap_index[0]):max(overlap_index[0]),min(overlap_index[1]):max(overlap_index[1])]
-        xyz1 = array_to_xyz(canvas)
-        xyz2 = array_to_xyz(t_canvas)
-        # Create point cloud objects
-        pc_fix = PointCloud(xyz1, columns=["x", "y", "z"])
-        pc_mov = PointCloud(xyz2, columns=["x", "y", "z"])
+            for i in range(no_iterations):
+                print(f'Iteration {i}/{no_iterations}')
+                #Find the nearest neighbours between the current source and the
+                #destination cloudpoint
+                nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto').fit(dst[0])
+                distances, indices = nbrs.kneighbors(src[0])
+        
+                #Compute the transformation between the current source
+                #and destination cloudpoint
+                T,inliers = cv2.estimateAffinePartial2D(src, dst[0, indices.T],confidence= 0.99,ransacReprojThreshold=3,refineIters=10000)
+                #Transform the previous source and update the
+                #current source cloudpoint
+                src = cv2.transform(src, T)
+                #Save the transformation from the actual source cloudpoint
+                #to the destination
+                Tr = np.dot(Tr, np.vstack((T,[0,0,1])))
+            return Tr[0:2]
 
-        # Create simpleICP object, add point clouds, and run algorithm!
-        icp = SimpleICP()
-        icp.add_point_clouds(pc_fix, pc_mov)
-        H, X_mov_transformed, rigid_body_transformation_params, distance_residuals = icp.run(correspondences=1000,max_overlap_distance=30,max_iterations=100,min_change =1)
 
-            
+        H = icp(self.src_points,self.des_points, self.transform)
+        print(H)
         self.transform[0][-1] = self.transform[0][-1]-H[0][-1]#swapped with below
         self.transform[1][-1] = self.transform[1][-1]-H[1][-1]
         self.perform_transform()
@@ -528,16 +570,7 @@ class MainWindow():
         ax.set_yticks([])
         plt.show()
         
-    
-        
-        
-        
- 
-        
-        
-
-        
-
+   
 # Create the root window
 root = Tk()
 MainWindow(root)
