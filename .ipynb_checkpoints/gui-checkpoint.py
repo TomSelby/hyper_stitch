@@ -16,6 +16,7 @@ import torch
 import kornia.feature as KF
 from kornia_moons.viz import *
 from kornia_moons.feature import *
+import time
         
 class MainWindow():
     def __init__(self,main):
@@ -375,35 +376,59 @@ class MainWindow():
     
       
     def icp_refine(self):
-        def icp(src,dest, Tr, no_iterations = 13):    
-
-            #Initialise with the initial pose estimation
-            src = cv2.transform(src, Tr[0:2])
+        def xyz_from_arr(arr):
+            xyz = np.zeros((np.shape(arr)[0]*np.shape(arr)[1], 3))
+            for i in range(np.shape(arr)[0]):
+                for j in range(np.shape(arr)[1]):
+                    xyz[i*np.shape(arr)[0]+j] = i,j,arr[i,j]
+            return xyz
         
-            for i in range(no_iterations):
-                print(f'Iteration {i}/{no_iterations}')
-                #Find the nearest neighbours between the current source and the
-                #destination cloudpoint
-                nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto').fit(dst[0])
-                distances, indices = nbrs.kneighbors(src[0])
-        
-                #Compute the transformation between the current source
-                #and destination cloudpoint
-                T,inliers = cv2.estimateAffinePartial2D(src, dst[0, indices.T],confidence= 0.99,ransacReprojThreshold=3,refineIters=10000)
-                #Transform the previous source and update the
-                #current source cloudpoint
-                src = cv2.transform(src, T)
-                #Save the transformation from the actual source cloudpoint
-                #to the destination
-                Tr = np.dot(Tr, np.vstack((T,[0,0,1])))
-            return Tr[0:2]
+        def nearest_neighbor(src, dst):
+            dist = np.linalg.norm(src[:, None] - dst, axis=-1)
+            indices = dist.argmin(-1)
+            return dist[np.arange(len(dist)), indices], indices
 
 
-        H = icp(self.src_points,self.des_points, self.transform)
-        print(H)
-        self.transform[0][-1] = self.transform[0][-1]-H[0][-1]#swapped with below
-        self.transform[1][-1] = self.transform[1][-1]-H[1][-1]
+        def icp(self):
+            
+            where_overlap = np.where((self.t_canvas1>0) & (self.t_canvas2 >0))
+            min_x,max_x = np.amin(where_overlap[0]), np.amax(where_overlap[0])
+            min_y,max_y = np.amin(where_overlap[1]), np.amax(where_overlap[1])
+
+            src = self.t_canvas1[min_x:max_x, min_y:max_y]
+            dest = self.t_canvas2[min_x:max_x, min_y:max_y]
+            
+            xyz0 = xyz_from_arr(src)
+            xyz1 = xyz_from_arr(dest)
+            
+            dist, ind = nearest_neighbor(xyz0, xyz1)
+       
+            sum_change_x = 0
+            sum_change_y = 0
+            for i,point in enumerate(ind):
+                print(xyz0[i], xyz1[point])
+                change = xyz0[i]-xyz1[point]
+                sum_change_x += change[0]
+                sum_change_y += change[1]
+    
+            av_change_x = sum_change_x/len(ind)
+            av_change_y = sum_change_y/len(ind)
+            
+            self.transform[0,2] += av_change_x
+            self.transform[1,2] += av_change_y
+            self.perform_transform()
+            
+            
+        self.mode = 'icp'
+        t0 = time.time()
+        for i in range(10):
+            print(i,end = ' ')
+            icp(self)
+        t1 = time.time()
+        print(f'ICP time: {round(t1-t0)}s')
+        self.mode = 'stitching'
         self.perform_transform()
+
         
         
         
@@ -543,7 +568,7 @@ class MainWindow():
         
         
         ## Differentiate between modes
-        if self.mode == 'stitching':
+        if (self.mode == 'stitching'):
             self.result = cv2.addWeighted(self.t_canvas1, 1,self.t_canvas2, 1 , 0.0)
             self.plot_result()
             ## Get where result != canvas1 or canvas2 (the overlap) and make it = canvas1 (could equally use canvas2) so as not to get bright spot when during image blend
