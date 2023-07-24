@@ -17,6 +17,11 @@ import kornia.feature as KF
 from kornia_moons.viz import *
 from kornia_moons.feature import *
 import time
+from numba import njit
+from numba import jit
+from numba import prange
+import time
+
         
 class MainWindow():
     def __init__(self,main):
@@ -383,10 +388,17 @@ class MainWindow():
                     xyz[i*np.shape(arr)[0]+j] = i,j,arr[i,j]
             return xyz
         
+        @jit(nopython=True,parallel=True)
         def nearest_neighbor(src, dst):
-            dist = np.linalg.norm(src[:, None] - dst, axis=-1)
-            indices = dist.argmin(-1)
-            return dist[np.arange(len(dist)), indices], indices
+            # dist = np.linalg.norm(src[:, None] - dst, axis=-1)
+            indicies = np.zeros(len(src))
+            for i in prange(len(src)):
+                src_point = src[i]
+                distances = np.sqrt(((src_point[0]-dst[:,0])**2)+((src_point[1]-dst[:,1]))**2+((src_point[2]-dst[:,2])**2))
+                indicies[i] = np.argmin(distances)
+            return indicies
+            
+         
 
 
         def icp(self):
@@ -401,19 +413,22 @@ class MainWindow():
             xyz0 = xyz_from_arr(src)
             xyz1 = xyz_from_arr(dest)
             
-            dist, ind = nearest_neighbor(xyz0, xyz1)
+            ind = nearest_neighbor(xyz0, xyz1)
        
             sum_change_x = 0
             sum_change_y = 0
+
             for i,point in enumerate(ind):
-                print(xyz0[i], xyz1[point])
-                change = xyz0[i]-xyz1[point]
-                sum_change_x += change[0]
-                sum_change_y += change[1]
+                change = xyz0[i]-xyz1[int(point)]
+                sum_change_y += change[0]#swapped
+                sum_change_x += change[1]
+    
+        
     
             av_change_x = sum_change_x/len(ind)
             av_change_y = sum_change_y/len(ind)
-            
+            print(f'X change:{av_change_x}')
+            print(f'Y change:{av_change_y}')
             self.transform[0,2] += av_change_x
             self.transform[1,2] += av_change_y
             self.perform_transform()
@@ -422,10 +437,10 @@ class MainWindow():
         self.mode = 'icp'
         t0 = time.time()
         for i in range(10):
-            print(i,end = ' ')
+            
             icp(self)
-        t1 = time.time()
-        print(f'ICP time: {round(t1-t0)}s')
+            print(f'Iteration: {i}, Time: {time.time()-t0} s')
+        print('ICP complete')
         self.mode = 'stitching'
         self.perform_transform()
 
