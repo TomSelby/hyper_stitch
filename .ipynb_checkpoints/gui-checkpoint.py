@@ -70,7 +70,6 @@ class MainWindow():
                                     text = "Perform TM from\nselected points",
                                     command = self.tm_from_selection)
         
-         
         self.button_explore = Button(main,
                                     text = "Browse Files",
                                     command = self.browseFiles)
@@ -108,6 +107,7 @@ class MainWindow():
         self.button_save_transfom = Button(main, 
                                    text = 'Confirm Stitch and \nadd transform to list',
                                    command = self.add_transform_to_list)
+ 
         
         
         self.canvas1 = Canvas(main, height=500,width=500)
@@ -128,7 +128,7 @@ class MainWindow():
         self.tm_entry_block.grid(row=2, column=2)
         self.button_load_tm.grid(row=2, column=3,sticky = N)
         self.tm_from_selected_pts.grid(row=3, column=3, sticky = N)
-    
+       
 
     def korina_detection(self):
         def numpy_to_torch_tensor(npy):
@@ -195,7 +195,6 @@ class MainWindow():
     def tm_from_selection(self):
         self.transform,inliers = cv2.estimateAffinePartial2D(np.array(self.subplot1pts),np.array(self.subplot0pts),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
         
-        # self.transform,inliers = cv2.estimateAffine2D(np.array(self.subplot1pts),np.array(self.subplot0pts),method = 'LMEDS',refineIters=self.ransac_refine_iters)
                 
         self.affine_label.configure(self.affine_label, text=str(np.around(self.transform)))# Update affine label
 
@@ -383,9 +382,9 @@ class MainWindow():
     def icp_refine(self):
         def xyz_from_arr(arr):
             xyz = np.zeros((np.shape(arr)[0]*np.shape(arr)[1], 3))
-            for i in range(np.shape(arr)[0]):
-                for j in range(np.shape(arr)[1]):
-                    xyz[i*np.shape(arr)[0]+j] = i,j,arr[i,j]
+            for i in range(np.shape(arr)[1]):
+                for j in range(np.shape(arr)[0]):
+                    xyz[i*np.shape(arr)[0]+j] = j,i,arr[j,i] #0 and 1 jand i
             return xyz
         
         @jit(nopython=True,parallel=True)
@@ -424,12 +423,11 @@ class MainWindow():
                 sum_change_x += change[1]
     
         
-    
             av_change_x = sum_change_x/len(ind)
             av_change_y = sum_change_y/len(ind)
             print(f'X change:{av_change_x}')
             print(f'Y change:{av_change_y}')
-            self.transform[0,2] += av_change_x
+            self.transform[0,2] += av_change_x # - and plus swapped
             self.transform[1,2] += av_change_y
             self.perform_transform()
             
@@ -458,9 +456,11 @@ class MainWindow():
         if self.mode == 'stitching':    
             os.remove(self.canvas1_filename)
     
-
+        
         np.save(self.canvas2_filename,self.result)
-        self.save_transform_list()#Save the updated df <----COMMENT BACK IN IF WANT CONTINUAL SAVING
+        os.chdir(r'C:\Users\tas72\Documents\PhD\Halide_seg_project')
+        self.save_transform_list()
+        os.chdir(r'C:\Users\tas72\Documents\GitHub\Hyper_stitch')
         print('transform_added')
         
     def save_transform_list(self):
@@ -485,6 +485,7 @@ class MainWindow():
         self.transform_dataframe = pd.read_pickle(path)
         print('Loaded')
         print(self.transform_dataframe.head())
+        print(f'Total length: {len(self.transform_dataframe)}')
         
     def batch_sititch_images(self):
         self.batch_directory = filedialog.askdirectory(initialdir = self.last_filepath,
