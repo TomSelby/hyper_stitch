@@ -70,9 +70,13 @@ class MainWindow():
                                     text = "Perform TM from\nselected points",
                                     command = self.tm_from_selection)
         
-        self.button_explore = Button(main,
+        self.button_explore_files = Button(main,
                                     text = "Browse Files",
                                     command = self.browseFiles)
+        
+        self.button_explore_save = Button(main,
+                                    text = "Browse Files",
+                                    command = self.browseSavePath)
         
         self.button_load_im1 = Button(main,
                                     text="Load First Image",
@@ -96,8 +100,13 @@ class MainWindow():
         
         self.label_file_explorer = Label(main,
                             text = "Please select a file",
-                            width = 50, height = 4,
+                            width = 70, height = 4,
                             fg = "blue")
+        self.label_save_path = Label(main,
+                                text = "Please select a save path",
+                                width=70, height =4,
+                                fg = 'red')
+        
         
         self.affine_label = Label(main,
                             text = str(self.transform),
@@ -109,13 +118,19 @@ class MainWindow():
                                    command = self.add_transform_to_list)
  
         
+
+
         
         self.canvas1 = Canvas(main, height=500,width=500)
         self.canvas2 = Canvas(main, height=500,width=500)
         self.image_on_canvas1 = self.canvas1.create_image(0, 0, anchor='nw', image=None)
         self.image_on_canvas2 = self.canvas2.create_image(0, 0, anchor='nw', image=None)        
-        self.label_file_explorer.grid(row = 0, column = 0,columnspan=2,sticky= N)
-        self.button_explore.grid(row=1, column=0,columnspan = 2,sticky= N)
+        self.label_file_explorer.grid(row = 0, column = 0,columnspan=1,sticky= N)
+        self.button_explore_files.grid(row=1, column=0,columnspan = 1,sticky= N)
+        self.button_explore_save.grid(row=1, column=1,columnspan = 1,sticky= N)
+
+        self.label_save_path.grid(row =0,column=1,sticky=N)
+        
         self.button_load_im1.grid(row = 2, column = 0, sticky = N)
         self.button_load_im2.grid(row = 2, column = 1, sticky = N)
         self.button_manual_points.grid(row =3, column = 2, sticky = N)
@@ -129,7 +144,7 @@ class MainWindow():
         self.button_load_tm.grid(row=2, column=3,sticky = N)
         self.tm_from_selected_pts.grid(row=3, column=3, sticky = N)
        
-
+        
     def korina_detection(self):
         def numpy_to_torch_tensor(npy):
             npy = npy - np.amin(npy)
@@ -244,6 +259,15 @@ class MainWindow():
                                                             "*.*")))
         self.label_file_explorer.configure(text="File: "+ self.filename)
         self.last_filepath = self.filename
+
+
+    def browseSavePath(self):
+        self.savepath = filedialog.askdirectory(initialdir = self.last_filepath,
+                                              title = "Select a Savepath")
+        self.label_save_path.configure(text="Save path: "+ self.savepath)
+        self.last_filepath = self.savepath
+
+    
         
 
     def loadimg(self,canvas_num):
@@ -458,7 +482,14 @@ class MainWindow():
     
         
         np.save(self.canvas2_filename,self.result)
-        os.chdir(r'C:\Users\tas72\Documents\PhD\Halide_seg_project')
+        
+        
+        ######### CHANGE THIS #########
+        os.chdir(self.savepath)
+        ######### CHANGE THIS #########
+
+
+        
         self.save_transform_list()
         os.chdir(r'C:\Users\tas72\Documents\GitHub\Hyper_stitch')
         print('transform_added')
@@ -611,7 +642,7 @@ class MainWindow():
         ax.set_yticks([])
         plt.show()
         
-   
+
 # Create the root window
 root = Tk()
 MainWindow(root)
