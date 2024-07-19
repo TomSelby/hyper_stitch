@@ -253,10 +253,10 @@ class MainWindow():
     def browseFiles(self):
         self.filename = filedialog.askopenfilename(initialdir = self.last_filepath,
                                               title = "Select a File",
-                                              filetypes = (("Image files",
-                                                            "*.npy*"),
-                                                           ("all files",
-                                                            "*.*")))
+                                              filetypes = [("Image files",
+                                                            "*.npy"),
+                                                           ("All files",
+                                                            "*.*")])
         self.label_file_explorer.configure(text="File: "+ self.filename)
         self.last_filepath = self.filename
 
