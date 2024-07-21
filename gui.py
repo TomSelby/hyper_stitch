@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import glob
 import pandas as pd
+import utils
 import cv2
 import sys
 from sklearn.neighbors import NearestNeighbors
@@ -16,7 +17,6 @@ import torch
 import kornia.feature as KF
 from kornia_moons.viz import *
 from kornia_moons.feature import *
-import time
 from numba import njit
 from numba import jit
 from numba import prange
@@ -30,7 +30,7 @@ class MainWindow():
         self.main.title('Image Stitcher')
         self.main.geometry('1300x700')
         self.main.config(background = "white")
-        self.stitch_mode = 'combo'
+        self.stitch_mode = 'kornia'
 
         ## Menu Bar
         menubar = Menu(main)
@@ -38,11 +38,8 @@ class MainWindow():
         self.file_menu = Menu(menubar)
         self.file_menu.add_command(label = 'Save transform list', command = self.save_transform_list)
         self.file_menu.add_command(label = 'Load transform list',command=self.load_transform_list)
-        self.file_menu.add_command(label = 'Bactch stitch images',command=self.batch_sititch_images)
-        self.file_menu.add_command(label = 'Batch find drift correct transform', command=self.batch_find_drift_correct)
-        self.file_menu.add_command(label = 'Batch drift correct', command = self.batch_drift_correct)
+
         self.file_menu.add_command(label = 'Alter SIFT and RANSAC params', command = self.sift_ransac_params)
-        self.file_menu.add_command(label = 'Change Mode', command = self.change_mode)
         self.file_menu.add_command(label = 'Change detection mode', command = self.change_detection)
         menubar.add_cascade(label = "File",menu=self.file_menu)
         self.last_filepath = '/'
@@ -103,7 +100,7 @@ class MainWindow():
                             width = 70, height = 4,
                             fg = "blue")
         self.label_save_path = Label(main,
-                                text = "Please select a save path",
+                                text = "Please select a project folder",
                                 width=70, height =4,
                                 fg = 'red')
         
@@ -114,7 +111,7 @@ class MainWindow():
                             fg = "black")
         
         self.button_save_transfom = Button(main, 
-                                   text = 'Confirm Stitch and \nadd transform to list',
+                                   text = 'Confirm Stitch and \nsave transform',
                                    command = self.add_transform_to_list)
  
         
@@ -197,15 +194,7 @@ class MainWindow():
         print(f'Detection mode changed to: {self.stitch_mode}')
         
     
-    def change_mode(self):
-        '''Change between stitching and drift correction mode'''
-        if self.mode == 'stitching':
-            self.mode = 'drift correction'
-        else:
-            self.mode = 'stitching'
-            
-        print(f'Now in {self.mode} mode') 
-        
+       
         
     def tm_from_selection(self):
         self.transform,inliers = cv2.estimateAffinePartial2D(np.array(self.subplot1pts),np.array(self.subplot0pts),confidence= self.ransac_confidence,ransacReprojThreshold=self.ransac_recip_thresh,refineIters=self.ransac_refine_iters)
@@ -263,8 +252,9 @@ class MainWindow():
 
     def browseSavePath(self):
         self.savepath = filedialog.askdirectory(initialdir = self.last_filepath,
-                                              title = "Select a Savepath")
-        self.label_save_path.configure(text="Save path: "+ self.savepath)
+                                              title = "Select a project folder")
+        self.label_save_path.configure(text="Project folder: "+ self.savepath)
+       
         self.last_filepath = self.savepath
 
     
@@ -272,6 +262,7 @@ class MainWindow():
 
     def loadimg(self,canvas_num):
         if canvas_num == 1:
+            self.filename1 = self.filename
             self.npy1 = np.load(self.filename)
             npy = np.load(self.filename)
             npy = npy - np.amin(npy)
@@ -283,7 +274,7 @@ class MainWindow():
             self.canvas1_filename = self.filename
             
         if canvas_num == 2:
-            
+            self.filename2 = self.filename
             self.npy2 = np.load(self.filename)
             npy = np.load(self.filename)
             npy = npy - np.amin(npy)
@@ -472,8 +463,6 @@ class MainWindow():
         
     ## Functions from file dropdown    
     def add_transform_to_list(self):
-       
-        
         df2 = pd.DataFrame([[self.canvas1_filename,self.canvas2_filename,self.transform]],columns = ['file1','file2', 'TM'])
         self.transform_dataframe = pd.concat([self.transform_dataframe,df2])
             
@@ -517,68 +506,9 @@ class MainWindow():
         print('Loaded')
         print(self.transform_dataframe.head())
         print(f'Total length: {len(self.transform_dataframe)}')
-        
-    def batch_sititch_images(self):
-        self.batch_directory = filedialog.askdirectory(initialdir = self.last_filepath,
-                                                      title = "Select a Directory")
-        os.chdir(self.batch_directory)
-        
-        dirc_list = glob.glob('*.npy')
-        print(dirc_list)
-        self.sift_judgement = ''
-        
-        
-        for file1 in dirc_list:
-            
-            print('STARTING NEW MATCHING IMAGE')
-            self.filename = file1
-            self.loadimg(1)
-            for i,file2 in enumerate(dirc_list):
-                print(i)
-                self.filename = file2
-                self.loadimg(2)
+                           
                 
-                self.siftestimation()
                 
-                if self.sift_judgement == 'break':
-                    break
-            if self.sift_judgement == 'break':
-                break
-                    
-                
-    def batch_drift_correct(self):
-        self.mode = 'drift correction'
-        self.batch_directory = filedialog.askdirectory(initialdir = self.last_filepath,
-                                                      title = "Select a Directory")
-        os.chdir(self.batch_directory)
-        
-        for i in range(len(self.transform_dataframe)):
-            transform_to_be_applied = self.transform_dataframe['TM'].iloc[i]
-            new_df = self.transform_dataframe.iloc[:i]
-            print(transform_to_be_applied, new_df)
-            for j in range(len(new_df)):
-                self.filename = self.transform_dataframe['file1'].iloc[j]
-                self.loadimg(1)
-                self.filename = self.transform_dataframe['file2'].iloc[j]
-                self.loadimg(2)
-                self.perform_transform()
-                self.add_transform_to_list()
-                
-    def batch_find_drift_correct(self):
-        self.mode = 'drift correction'
-      
-        self.batch_directory = filedialog.askdirectory(initialdir = self.last_filepath,
-                                                      title = "Select a Directory")
-        os.chdir(self.batch_directory)
-        dirc_list = glob.glob('*.npy')
-        for i in range(len(dirc_list)-1):
-            self.filename = str(i) + '.npy'
-            self.loadimg(1)
-            self.filename = str(i+1) + '.npy'
-            self.loadimg(2)
-            self.siftestimation()
-        self.save_transform_list()
-            
 
         
     def load_inputted_TM(self,inputted):
@@ -592,7 +522,7 @@ class MainWindow():
         
         
     def perform_transform(self):
-        
+
         scale_factor = max(self.transform[0][0], self.transform[1][1])
         mcg_const_shape = np.shape(self.imarray1)
         mcg_shape = np.shape(self.imarray2)
@@ -604,33 +534,25 @@ class MainWindow():
         top_left_corn = (int((canvas_shape[0]-mcg_const_shape[0])/2),int((canvas_shape[1]-mcg_const_shape[1])/2))
         self.t_canvas1[top_left_corn[0]:top_left_corn[0] + int(mcg_const_shape[0]),top_left_corn[1]:top_left_corn[1] + int(mcg_const_shape[1])] = self.imarray1
         canvas2[top_left_corn[0]:top_left_corn[0] + int(mcg_shape[0]),top_left_corn[1]:top_left_corn[1] + int(mcg_shape[1]) ] = self.imarray2
-        
-        M = np.float32([[1, 0,-top_left_corn[1]+(top_left_corn[1]/self.transform[1][1])], #this correction of the mcg image was placed in the center- think if correct way round
+
+     
+        M = np.float32([[1, 0,-top_left_corn[1]+(top_left_corn[1]/self.transform[1][1])], #this correction of the mcg image was placed in the center
                          [0, 1,-top_left_corn[0]+(top_left_corn[0]/self.transform[0][0])]])
 
         self.t_canvas2 = cv2.warpAffine(canvas2, M, (canvas_shape[1],canvas_shape[0]))
         
-        
-        self.t_canvas2 = cv2.warpAffine(self.t_canvas2, np.float32(self.transform), (canvas_shape[1],canvas_shape[0])) #Be careful here we may want to swap 0/1 
-        
-        
-        ## Differentiate between modes
-        if (self.mode == 'stitching'):
-            self.result = cv2.addWeighted(self.t_canvas1, 1,self.t_canvas2, 1 , 0.0)
-            self.plot_result()
-            ## Get where result != canvas1 or canvas2 (the overlap) and make it = canvas1 (could equally use canvas2) so as not to get bright spot when during image blend
-            not_equal_to_canv1 = self.result != self.t_canvas1
-            not_equal_to_canv2 = self.result != self.t_canvas2
-            self.result = np.where(np.logical_and(not_equal_to_canv1, not_equal_to_canv2),self.t_canvas1,self.result)
-        
-        elif self.mode == 'drift correction':
-            self.result = self.t_canvas2
-       
+        self.t_canvas2 = cv2.warpAffine(self.t_canvas2, np.float32(self.transform), (canvas_shape[1],canvas_shape[0]))      
+ 
+        self.result = cv2.addWeighted(self.t_canvas1, 1,self.t_canvas2, 1 , 0.0)
+        self.plot_result()
+        ## Get where result != canvas1 or canvas2 (the overlap) and make it = canvas1 (could equally use canvas2) so as not to get bright spot when during image blend
+        not_equal_to_canv1 = self.result != self.t_canvas1
+        not_equal_to_canv2 = self.result != self.t_canvas2
+        self.result = np.where(np.logical_and(not_equal_to_canv1, not_equal_to_canv2),self.t_canvas1,self.result)      
         ## Cut and plot
         self.result = self.result[~np.all(self.result == 0, axis=1)]
         self.result = self.result[:,~(self.result==0).all(0)]
-        if self.mode == 'stitching':
-            self.plot_result()
+        self.plot_result()
         
 
     def plot_result(self):
@@ -642,10 +564,8 @@ class MainWindow():
         ax.set_yticks([])
         plt.show()
         
-
 # Create the root window
 root = Tk()
 MainWindow(root)
-
 # Let the window wait for any events
 root.mainloop()
