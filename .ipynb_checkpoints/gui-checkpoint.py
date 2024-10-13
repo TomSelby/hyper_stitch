@@ -444,7 +444,7 @@ class MainWindow():
             print(f'Y change:{av_change_y}')
             self.transform[0,2] += av_change_x # - and plus swapped
             self.transform[1,2] += av_change_y
-            self.perform_transform()
+            self.perform_transform(plot=False)
             
             
         self.mode = 'icp'
@@ -521,8 +521,8 @@ class MainWindow():
         
         
         
-    def perform_transform(self):
-
+    def perform_transform(self,plot= True):
+        print(self.transform)
         scale_factor = max(self.transform[0][0], self.transform[1][1])
         mcg_const_shape = np.shape(self.imarray1)
         mcg_shape = np.shape(self.imarray2)
@@ -544,7 +544,8 @@ class MainWindow():
         self.t_canvas2 = cv2.warpAffine(self.t_canvas2, np.float32(self.transform), (canvas_shape[1],canvas_shape[0]))      
  
         self.result = cv2.addWeighted(self.t_canvas1, 1,self.t_canvas2, 1 , 0.0)
-        self.plot_result()
+        if plot ==True:
+            self.plot_result()
         ## Get where result != canvas1 or canvas2 (the overlap) and make it = canvas1 (could equally use canvas2) so as not to get bright spot when during image blend
         not_equal_to_canv1 = self.result != self.t_canvas1
         not_equal_to_canv2 = self.result != self.t_canvas2
@@ -552,7 +553,8 @@ class MainWindow():
         ## Cut and plot
         self.result = self.result[~np.all(self.result == 0, axis=1)]
         self.result = self.result[:,~(self.result==0).all(0)]
-        self.plot_result()
+        if plot == True:
+            self.plot_result()
         
 
     def plot_result(self):
