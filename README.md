@@ -13,4 +13,4 @@ pip install kornia
 Feel free to raise an issue if you experience problems or wish to see new functionality implemented.
 
 ## References
-1. E. Riba, D. Mishkin, J. Shi, D. Ponsa, F. Moreno-Noguer and G. Bradski, 2020. doi.org/10.48550/arXiv.2009.10521
+1. E. Riba, D. Mishkin, J. Shi, D. Ponsa, F. Moreno-Noguer and G. Bradski, 2020. [doi.org/10.48550/arXiv.2009.10521](https://arxiv.org/abs/2009.10521)
