@@ -268,6 +268,7 @@ class MainWindow():
             npy = npy - np.amin(npy)
             npy = 255*(npy/np.amax(npy))
             self.imarray1 = npy.astype('uint8')
+            # self.imarray1 +=1
             img = ImageTk.PhotoImage(Image.fromarray(npy).resize((500, 500)))
             self.canvas1.image = img
             self.canvas1.itemconfig(self.image_on_canvas1, image=img)
@@ -280,6 +281,7 @@ class MainWindow():
             npy = npy - np.amin(npy)
             npy = 255*(npy/np.amax(npy))
             self.imarray2 = npy.astype('uint8')
+            # self.imarray1 +=1
             img = ImageTk.PhotoImage(Image.fromarray(npy).resize((500, 500)))
             self.canvas2.image = img
             self.canvas2.itemconfig(self.image_on_canvas2, image=img)
@@ -464,23 +466,12 @@ class MainWindow():
     ## Functions from file dropdown    
     def add_transform_to_list(self):
         df2 = pd.DataFrame([[self.canvas1_filename,self.canvas2_filename,self.transform]],columns = ['file1','file2', 'TM'])
-        self.transform_dataframe = pd.concat([self.transform_dataframe,df2])
-            
+        self.transform_dataframe = pd.concat([self.transform_dataframe,df2])   
         if self.mode == 'stitching':    
             os.remove(self.canvas1_filename)
-    
-        
         np.save(self.canvas2_filename,self.result)
-        
-        
-        ######### CHANGE THIS #########
         os.chdir(self.savepath)
-        ######### CHANGE THIS #########
-
-
-        
         self.save_transform_list()
-        os.chdir(r'C:\Users\tas72\Documents\GitHub\Hyper_stitch')
         print('transform_added')
         
     def save_transform_list(self):
@@ -549,7 +540,8 @@ class MainWindow():
         ## Get where result != canvas1 or canvas2 (the overlap) and make it = canvas1 (could equally use canvas2) so as not to get bright spot when during image blend
         not_equal_to_canv1 = self.result != self.t_canvas1
         not_equal_to_canv2 = self.result != self.t_canvas2
-        self.result = np.where(np.logical_and(not_equal_to_canv1, not_equal_to_canv2),self.t_canvas1,self.result)      
+        #self.result = np.where(np.logical_and(not_equal_to_canv1, not_equal_to_canv2),(self.t_canvas1,self.result)
+        self.result = np.where(np.logical_and(not_equal_to_canv1, not_equal_to_canv2),(self.t_canvas1+self.t_canvas2)/2,self.result)      
         ## Cut and plot
         self.result = self.result[~np.all(self.result == 0, axis=1)]
         self.result = self.result[:,~(self.result==0).all(0)]
