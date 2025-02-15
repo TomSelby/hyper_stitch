@@ -8,7 +8,7 @@ pip installing kornia should provide both of these and all other requirements:
 pip install kornia
 ```
 ## Demo
-Please download and run the ```gui.py``` file having installed the necessary python packages, then follow the demo outlined in ```demo.pdf```.
+Please download and run the ```gui.py``` file having installed the necessary python packages, then follow the demo outlined in ```demo/demo.pdf```.
 ## Contributing
 Feel free to raise an issue if you experience problems or wish to see new functionality implemented.
 
