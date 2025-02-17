@@ -1,4 +1,4 @@
-# Hyper_stitch
+# hyper_stitch
 Hyper_stitch is a GUI which uses key-point feature detection with RANSAC and ICP algorithms for stitching images together. This has been applied to stitching contiguous scanning electron diffraction datasets together.
 ## Installation and Dependancies
 ### Python Dependancies
